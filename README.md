@@ -74,7 +74,7 @@ vllm-bench/
 
 ## Features
 
-- **RAG-style prompts**: 1500 unique pre-generated prompts from Dolly dataset + Wikipedia context (avg ~1371 tokens)
+- **RAG-style prompts**: Generate unique pre-generated prompts from Dolly dataset + Wikipedia context (avg ~1371 tokens)
 - **Cache-free benchmarking**: Unique prompt tracking ensures zero cache reuse across runs
 - **Comprehensive visualization**: 7 plot types (TTFT/Latency/Throughput CDFs, histograms, time series)
 - **Auto-detection**: `plot.py` automatically finds most recent benchmark results
