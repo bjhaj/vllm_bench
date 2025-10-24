@@ -23,72 +23,118 @@ vllm-bench/
 ### 1. Install Dependencies
 
 ```bash
-# Create and activate a virtual environment (recommended)
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Create mamba environment and install packages
+make install
 
-# Install required packages
+# Or manually:
+mamba create -n vllm-bench python=3.10 -y
+mamba activate vllm-bench
 pip install -r requirements.txt
 ```
 
-### 2. Configure Hugging Face Access (if needed)
-
-If you're using **private or gated models** (like `gpt-oss-20`), you need to:
-
-1. **Create a Hugging Face account** at https://huggingface.co
-2. **Generate an access token:**
-   - Go to Settings → Access Tokens
-   - Create a new token with "Read" permissions
-3. **Accept the model license:**
-   - Visit the model page (e.g., `https://huggingface.co/gpt-oss-20`)
-   - Click "Agree and access repository" if prompted
-4. **Set the token as an environment variable:**
-   ```bash
-   export HF_TOKEN="hf_your_token_here"
-   ```
-
-### 3. Override Default Model (Optional)
-
-To use a different model, set the `MODEL` environment variable:
+### 2. Configure Environment Variables
 
 ```bash
-export MODEL="meta-llama/Llama-2-7b-chat-hf"
-# or
-MODEL=mistralai/Mistral-7B-Instruct-v0.2 ./server/run_server.sh
+# Create .env file from template
+make init-env
+
+# Edit .env and add your Hugging Face token
+nano .env  # or vim, code, etc.
+```
+
+Your `.env` file should look like:
+```bash
+# Required
+HF_TOKEN=hf_your_actual_token_here
+
+# Model configuration
+MODEL=gpt-oss-20
+PORT=8000
+HOST=0.0.0.0
+
+# Performance tuning
+GPU_MEM_UTIL=0.90
+MAX_MODEL_LEN=4096
+KV_CACHE_DTYPE=auto
+```
+
+**Get your Hugging Face token:**
+1. Go to https://huggingface.co/settings/tokens
+2. Create a new token with "Read" permissions
+3. Copy it to your `.env` file
+
+### 3. Accept Model License (if needed)
+
+### 3. Accept Model License (if needed)
+
+If you're using **private or gated models** (like `gpt-oss-20`):
+
+1. Visit the model page: `https://huggingface.co/gpt-oss-20`
+2. Click "Agree and access repository" if prompted
+3. Your HF_TOKEN (set in `.env`) will grant access
+
+### 4. Override Default Model (Optional)
+
+You can override `.env` settings via command line or by editing `.env`:
+
+```bash
+# Option 1: Edit .env file
+nano .env
+# Change: MODEL=meta-llama/Llama-2-7b-chat-hf
+
+# Option 2: Override on command line
+MODEL=mistralai/Mistral-7B-Instruct-v0.2 make server
 ```
 
 ## Quick Start
 
 ### Start the vLLM Server
 
-**Option A: Using the shell script (local)**
+**Option A: Using Make (reads from .env)**
 ```bash
-# With default model (gpt-oss-20)
+# Server reads configuration from .env file
+make server
+
+# Or override specific variables
+MODEL=meta-llama/Llama-2-7b-chat-hf make server
+```
+
+**Option B: Using the shell script directly**
+```bash
+# Still reads from .env if you source it
+source .env
 ./server/run_server.sh
 
-# With custom configuration
-HF_TOKEN=hf_xxxxx MODEL=gpt-oss-20 PORT=8000 MAX_MODEL_LEN=4096 ./server/run_server.sh
+# Or set variables inline
+HF_TOKEN=hf_xxxxx MODEL=gpt-oss-20 PORT=8000 ./server/run_server.sh
 ```
 
-**Option B: Using Docker Compose**
+**Option C: Using Docker Compose**
 ```bash
 cd server
-HF_TOKEN=hf_xxxxx docker-compose up
+# Docker Compose will read .env from parent directory
+docker-compose up
+
+# Or set inline
+HF_TOKEN=hf_xxxxx MODEL=gpt-oss-20 docker-compose up
 ```
 
-The server will start on `http://0.0.0.0:8000` by default.
+The server will start on `http://0.0.0.0:8000` by default (or your configured PORT).
 
 ### Run Benchmarks
 
 ```bash
-# Run benchmarks (once implemented)
-make bench
+# Using Make
+make bench        # Run all scenarios
+make summarize    # Generate statistics
+make plots        # Create visualizations
+make all          # Run bench + summarize + plots
 
-# Run with GPU telemetry monitoring
-python bench/bench.py --telemetry
-
-# Run specific scenario with telemetry
-python bench/bench.py --name rag_medium --telemetry
+# Or run Python scripts directly (with mamba environment activated)
+mamba activate vllm-bench
+python bench/bench.py                    # All scenarios
+python bench/bench.py --name short_chat  # Single scenario
+python bench/bench.py --telemetry        # With GPU monitoring
 
 # View results
 ls results/
