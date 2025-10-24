@@ -533,7 +533,12 @@ async def run_scenario_benchmark(
     telemetry_monitor = None
     if enable_telemetry:
         try:
-            from telemetry import GPUTelemetryMonitor
+            import sys
+            from pathlib import Path as PathLib
+            
+            # Add parent directory to path for imports
+            sys.path.insert(0, str(PathLib(__file__).parent.parent.parent))
+            from bench.core.telemetry import GPUTelemetryMonitor
             telemetry_dir = output_dir / "telemetry"
             telemetry_monitor = GPUTelemetryMonitor(
                 output_dir=telemetry_dir,
@@ -554,10 +559,14 @@ async def run_scenario_benchmark(
     all_token_stats = []
     
     if use_rag:
-        from load_jsonl_prompts import load_prompts_from_jsonl
+        import sys
         from pathlib import Path
         
-        prompt_file = Path(__file__).parent / scenario_config.get("prompt_file", "../data/rag_prompts.jsonl")
+        # Add parent directory to path for imports
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from bench.prompts.load_jsonl_prompts import load_prompts_from_jsonl
+        
+        prompt_file = Path(__file__).parent.parent / scenario_config.get("prompt_file", "../data/rag_prompts.jsonl")
         
         if not prompt_file.exists():
             console.print(f"[red]Error: Prompt file not found: {prompt_file}[/red]")
@@ -573,7 +582,12 @@ async def run_scenario_benchmark(
         console.print(f"[cyan]📚 Loaded {len(all_messages)} total unique prompts from {prompt_file.name}[/cyan]")
     else:
         # Legacy: load from Dolly dataset
-        from load_real_prompts import load_real_prompts
+        import sys
+        from pathlib import Path
+        
+        # Add parent directory to path for imports
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        from bench.prompts.load_real_prompts import load_real_prompts
         
         console.print(f"[cyan]📚 Loading prompts from Dolly dataset...[/cyan]")
         

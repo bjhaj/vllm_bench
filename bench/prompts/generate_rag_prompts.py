@@ -380,7 +380,7 @@ Examples:
     parser.add_argument('-n', '--num-prompts', type=int, default=500, help='Number of prompts to generate')
     parser.add_argument('-t', '--target-tokens', type=int, default=1700, help='Target prefill tokens (1500-1900 recommended)')
     parser.add_argument('--history-turns', type=int, default=2, help='Number of conversation history turns')
-    parser.add_argument('-o', '--output', type=str, default='../data/rag_prompts.jsonl', help='Output JSONL file')
+    parser.add_argument('-o', '--output', type=str, default='../../data/rag_prompts.jsonl', help='Output JSONL file')
     parser.add_argument('--tokenizer', type=str, default='facebook/opt-1.3b', help='Tokenizer model name')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
     

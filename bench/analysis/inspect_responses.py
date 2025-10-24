@@ -222,8 +222,8 @@ Examples:
     parser.add_argument(
         "--file", "-f",
         type=Path,
-        default=Path(__file__).parent / "../data/rag_prompts_1500.jsonl",
-        help="Path to JSONL prompt file (default: ../data/rag_prompts_1500.jsonl)"
+        default=Path(__file__).parent.parent.parent / "data/rag_prompts_1500.jsonl",
+        help="Path to JSONL prompt file (default: data/rag_prompts_1500.jsonl)"
     )
     
     parser.add_argument(
