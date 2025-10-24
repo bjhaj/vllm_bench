@@ -10,13 +10,47 @@ vllm-bench/
 │   ├── run_server.sh      # POSIX shell script to launch vLLM
 │   └── docker-compose.yml # Docker Compose configuration
 ├── bench/           # Benchmarking logic and load generators
+│   ├── bench.py           # Main benchmark orchestrator
+│   ├── load_real_prompts.py  # Load prompts from HF datasets
+│   ├── scenarios.yaml     # Benchmark scenario definitions
+│   └── summarize.py       # Generate statistics
 ├── results/         # Benchmark results (gitignored)
 │   └── plots/       # Generated visualization plots
+├── inspect_prompts.py  # View/inspect prompts before benchmarking
+├── REAL_PROMPTS.md  # Documentation on real prompt datasets
 ├── Makefile         # Build and task automation
 ├── requirements.txt # Python dependencies (httpx, pydantic, etc.)
 ├── .gitignore       # Excludes venv, results, __pycache__
 └── README.md        # This file
 ```
+
+## Real Human Prompts
+
+**vllm-bench uses real human-generated prompts** from Hugging Face datasets instead of synthetic text. This provides more realistic benchmarking that reflects actual production workloads.
+
+**Default dataset:** [Databricks Dolly 15K](https://huggingface.co/datasets/databricks/databricks-dolly-15k)
+- 3,863 prompts available (50-500 tokens)
+- High-quality, diverse instruction-following tasks
+- Covers Q&A, summarization, extraction, reasoning
+
+**View prompts before benchmarking:**
+```bash
+# Inspect 10 prompts from Dolly dataset
+python inspect_prompts.py --show 10
+
+# Save all 500 prompts to file
+python inspect_prompts.py --save-text results/prompts.txt
+
+# Try different dataset
+python inspect_prompts.py --dataset openassistant --show 10
+```
+
+**Available datasets:**
+- `dolly` (default) - 3,863 prompts, best availability
+- `sharegpt` - 330 prompts, Alpaca instruction-following
+- `openassistant` - 341 prompts, conversational
+
+See [REAL_PROMPTS.md](REAL_PROMPTS.md) for full documentation.
 
 ## Setup Instructions
 

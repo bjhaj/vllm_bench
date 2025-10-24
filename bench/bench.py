@@ -23,8 +23,6 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
 from tqdm import tqdm
 
-from util_text import build_chat_messages
-
 
 console = Console()
 
@@ -34,12 +32,13 @@ class RequestResult:
     """Result of a single benchmark request."""
     run_id: str
     qid: int
-    prefill_tokens: int
+    prefill_tokens: int  # Target/estimated prefill tokens (from config)
     max_new_tokens: int
     ttft_ms: float
     latency_ms: float
-    prompt_tokens: int
-    completion_tokens: int
+    prompt_tokens: int  # Actual prompt tokens (from API response)
+    completion_tokens: int  # Actual completion tokens (from API response)
+    actual_prefill_tokens: int  # Actual tokenized prefill count (from JSONL token_stats)
     error: str
     timestamp: str
 
@@ -262,6 +261,7 @@ class AsyncLoadGenerator:
             latency_ms=latency_ms,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
+            actual_prefill_tokens=0,  # Will be set by caller from token_stats
             error=error,
             timestamp=timestamp,
         )
@@ -319,6 +319,7 @@ class AsyncLoadGenerator:
                         latency_ms=-1.0,
                         prompt_tokens=0,
                         completion_tokens=0,
+                        actual_prefill_tokens=0,
                         error=f"Unexpected error: {type(e).__name__}: {str(e)[:100]}",
                         timestamp=datetime.utcnow().isoformat(),
                     )
@@ -459,7 +460,7 @@ def save_results_csv(results: List[RequestResult], output_path: Path, append: bo
     fieldnames = [
         "run_id", "qid", "prefill_tokens", "max_new_tokens",
         "ttft_ms", "latency_ms", "prompt_tokens", "completion_tokens",
-        "error", "timestamp"
+        "actual_prefill_tokens", "error", "timestamp"
     ]
     
     # Check if file exists and has content
@@ -539,18 +540,64 @@ async def run_scenario_benchmark(
             console.print("[yellow]Warning: telemetry.py not found, skipping GPU monitoring[/yellow]")
             telemetry_monitor = None
     
-    # Generate chat messages batch
-    console.print(f"\n[yellow]Generating {num_requests} request prompts...[/yellow]")
-    from util_text import build_batch_chat_messages
-    messages_batch = build_batch_chat_messages(
-        prefill_tokens=prefill_tokens,
-        num_messages=num_requests,
-        base_seed=hash(scenario_name) % 10000
-    )
+    # Determine if this is a RAG scenario with JSONL prompts
+    use_rag = scenario_config.get("rag", False)
     
     # Run benchmarks for each concurrency level
     async with AsyncLoadGenerator(base_url, model, temperature) as generator:
         for concurrency in concurrencies:
+            # Calculate actual num_requests for this concurrency level
+            if "requests_per_user" in scenario_config:
+                # Scaled workload: total requests = concurrency × requests_per_user
+                actual_num_requests = concurrency * scenario_config["requests_per_user"]
+                console.print(f"\n[yellow]Scaled workload: {concurrency} users × {scenario_config['requests_per_user']} req/user = {actual_num_requests} total requests[/yellow]")
+            else:
+                # Fixed workload: use num_requests as-is
+                actual_num_requests = num_requests
+                console.print(f"\n[yellow]Fixed workload: {actual_num_requests} total requests[/yellow]")
+            
+            # Load prompts
+            console.print(f"[cyan]Loading {actual_num_requests} prompts...[/cyan]")
+            
+            if use_rag:
+                # Load from JSONL file
+                from load_jsonl_prompts import load_prompts_from_jsonl_repeated
+                from pathlib import Path
+                
+                prompt_file = Path(__file__).parent / scenario_config.get("prompt_file", "../data/rag_prompts.jsonl")
+                console.print(f"[cyan]  Loading RAG prompts from: {prompt_file}[/cyan]")
+                
+                if not prompt_file.exists():
+                    console.print(f"[red]Error: Prompt file not found: {prompt_file}[/red]")
+                    console.print(f"[yellow]Generate it with: python bench/generate_rag_prompts.py -n 500 -t {scenario_config.get('target_prefill_tokens', 1700)}[/yellow]")
+                    return
+                
+                messages_batch, token_stats_batch = load_prompts_from_jsonl_repeated(
+                    prompt_file,
+                    num_prompts=actual_num_requests,
+                    seed=hash(scenario_name) % 10000
+                )
+                
+                # Log token statistics
+                avg_tokens = sum(s["total_prefill_tokens"] for s in token_stats_batch) / len(token_stats_batch)
+                console.print(f"[green]  ✓ Loaded {len(messages_batch)} prompts (avg {avg_tokens:.1f} tokens)[/green]")
+            else:
+                # Legacy: load from Dolly dataset
+                from load_real_prompts import load_real_prompts
+                console.print(f"[cyan]  Using Dolly dataset (human-generated instructions)[/cyan]")
+                
+                messages_batch = load_real_prompts(
+                    num_prompts=actual_num_requests,
+                    dataset_name="dolly",
+                    min_tokens=50,
+                    max_tokens=max(500, prefill_tokens * 2),
+                    seed=hash(scenario_name) % 10000
+                )
+                token_stats_batch = None  # No detailed stats for legacy prompts
+                
+                if len(messages_batch) < actual_num_requests:
+                    console.print(f"[red]Error: Only found {len(messages_batch)} prompts, need {actual_num_requests}[/red]")
+                    return
             console.print(f"\n[bold yellow]Running with concurrency: {concurrency}[/bold yellow]")
             
             # Generate structured run ID
@@ -583,10 +630,15 @@ async def run_scenario_benchmark(
                 telemetry_monitor.save_csv(run_id)
                 telemetry_monitor.clear()
             
-            # Set run_id and prefill_tokens for all results
-            for result in results:
+            # Set run_id, prefill_tokens, and actual_prefill_tokens for all results
+            for i, result in enumerate(results):
                 result.run_id = run_id
                 result.prefill_tokens = prefill_tokens
+                # Set actual prefill tokens from token_stats if available
+                if token_stats_batch and i < len(token_stats_batch):
+                    result.actual_prefill_tokens = token_stats_batch[i]["total_prefill_tokens"]
+                else:
+                    result.actual_prefill_tokens = prefill_tokens  # Fallback to estimate
             
             # Generate output filename from pattern
             output_filename = output_pattern.format(run_id=run_id)

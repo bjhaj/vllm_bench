@@ -15,41 +15,55 @@ defaults:
 # - prefill_tokens: approximate number of input tokens (prompt length)
 # - max_new_tokens: maximum number of tokens to generate
 # - concurrencies: list of concurrent request levels to test
-# - num_requests: minimum total requests to send per concurrency level
+# - requests_per_user: requests per concurrent user (total scales with concurrency)
+# - num_requests: DEPRECATED - use requests_per_user for scaled workload
+#
+# RAG-specific fields:
+# - rag: true/false - whether to use pre-generated RAG prompts from JSONL
+# - prompt_file: path to JSONL file with pre-generated prompts
+# - target_prefill_tokens: target token count for Wikipedia context + question + history
+# - history_turns: number of conversation turns to include before new query
+# - dolly_questions: whether Dolly questions are used (informational only)
 
 scenarios:
-  # Short conversational queries with quick responses
-  # Typical use case: chatbot, quick Q&A
+  # Realistic RAG with Wikipedia context + Dolly questions + conversation history
+  # Uses pre-generated JSONL prompts with actual tokenized lengths
+  # Total requests scale with concurrency (e.g., 4 users × 10 req/user = 40 requests)
+  rag_realistic:
+    description: "Realistic RAG: Wikipedia context + Dolly questions + conversation history"
+    rag: true
+    prompt_file: "../data/rag_prompts_500.jsonl"
+    prefill_tokens: 1700  # Target prefill (required for validation)
+    target_prefill_tokens: 1700  # 1.5k-1.9k range
+    history_turns: 2
+    dolly_questions: true
+    max_new_tokens: 256
+    concurrencies: [4, 8, 16, 32]
+    num_requests: 10  # Minimum requests (will scale with concurrency if requests_per_user is set)
+    requests_per_user: 10  # Each user sends 10 requests
+    # Total requests: 4×10=40, 8×10=80, 16×10=160, 32×10=320
+
+  # Heavy RAG with more context and history
+  # Heavy RAG workload for stress testing
+  rag_heavy:
+    description: "Heavy RAG: Large context + high concurrency"
+    rag: true
+    prompt_file: "../data/rag_prompts_500.jsonl"
+    prefill_tokens: 3000  # Target prefill (required for validation)
+    target_prefill_tokens: 3000
+    history_turns: 4
+    dolly_questions: true
+    max_new_tokens: 512
+    concurrencies: [8, 16, 32]
+    num_requests: 20  # Minimum requests (will scale with concurrency)
+    requests_per_user: 20
+    # Total requests: 4×8=32, 8×8=64, 16×8=128
+
+  # Legacy short_chat (kept for backward compatibility, uses fixed workload)
   short_chat:
-    description: "Short chat messages with brief responses"
+    description: "Short chat messages with brief responses (legacy fixed workload)"
+    rag: false
     prefill_tokens: 256
     max_new_tokens: 128
     concurrencies: [8, 16, 32, 64]
-    num_requests: 500
-
-  # Medium RAG workload with context retrieval
-  # Typical use case: RAG with 3-5 retrieved documents
-  rag_medium:
-    description: "RAG with medium context (3-5 documents)"
-    prefill_tokens: 1536
-    max_new_tokens: 256
-    concurrencies: [8, 16, 32, 64, 96]
-    num_requests: 600
-
-  # Heavy RAG workload with extensive context
-  # Typical use case: RAG with 10+ retrieved documents, detailed synthesis
-  rag_heavy:
-    description: "RAG with heavy context (10+ documents) and longer generation"
-    prefill_tokens: 3072
-    max_new_tokens: 512
-    concurrencies: [8, 16, 32, 64, 96]
-    num_requests: 600
-
-  # Long context with minimal generation
-  # Typical use case: summarization, classification on long documents
-  long_context_small_decode:
-    description: "Long context input with minimal output generation"
-    prefill_tokens: 4096
-    max_new_tokens: 64
-    concurrencies: [8, 16, 32, 64, 96, 128]
-    num_requests: 800
+    num_requests: 500  # Fixed total, not scaled
