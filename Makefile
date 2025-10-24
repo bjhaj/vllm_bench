@@ -8,6 +8,7 @@ MAMBA := mamba
 
 # Directories
 BENCH_DIR := bench
+DATA_DIR := data
 RESULTS_DIR := results
 PLOTS_DIR := $(RESULTS_DIR)/plots
 SERVER_DIR := server
@@ -15,6 +16,9 @@ SERVER_DIR := server
 # Files
 REQUIREMENTS := requirements.txt
 SCENARIOS := $(BENCH_DIR)/scenarios.yaml
+BENCHMARK_SCRIPT := $(BENCH_DIR)/core/benchmark.py
+SUMMARIZE_SCRIPT := $(BENCH_DIR)/analysis/summarize.py
+PLOT_SCRIPT := $(BENCH_DIR)/analysis/plot.py
 SERVER_SCRIPT := $(SERVER_DIR)/run_server.sh
 ENV_FILE := .env
 ENV_EXAMPLE := .env.example
@@ -103,15 +107,15 @@ server:
 	@echo "Starting vLLM server..."
 	@echo "=================================================="
 	@echo "Configuration:"
-	@echo "  MODEL:           $${MODEL:-gpt-oss-20}"
+	@echo "  MODEL:           $${MODEL:-mistralai/Mistral-7B-Instruct-v0.3}"
 	@echo "  HOST:            $${HOST:-0.0.0.0}"
 	@echo "  PORT:            $${PORT:-8000}"
-	@echo "  GPU_MEM_UTIL:    $${GPU_MEM_UTIL:-<default>}"
-	@echo "  MAX_MODEL_LEN:   $${MAX_MODEL_LEN:-<auto>}"
+	@echo "  GPU_MEM_UTIL:    $${GPU_MEM_UTIL:-0.85}"
+	@echo "  MAX_MODEL_LEN:   $${MAX_MODEL_LEN:-8192}"
 	@echo "  KV_CACHE_DTYPE:  $${KV_CACHE_DTYPE:-<auto>}"
 	@echo "  HF_TOKEN:        $${HF_TOKEN:+✓ Set}"
 	@if [ -z "$$HF_TOKEN" ]; then \
-		echo "  HF_TOKEN:        ✗ NOT SET (required for gpt-oss-20)"; \
+		echo "  HF_TOKEN:        ✗ NOT SET (may be required for gated models)"; \
 	fi
 	@echo "=================================================="
 	@echo ""
@@ -121,26 +125,20 @@ server:
 .PHONY: bench
 bench:
 	@echo "Running all benchmark scenarios..."
-	$(MAMBA) run -n $(ENV_NAME) python $(BENCH_DIR)/bench.py --scenarios $(SCENARIOS) --output-dir $(RESULTS_DIR)
+	$(MAMBA) run -n $(ENV_NAME) python $(BENCHMARK_SCRIPT)
 
 # Generate summary statistics
 .PHONY: summarize
 summarize:
 	@echo "Generating summary from results..."
-	$(MAMBA) run -n $(ENV_NAME) python $(BENCH_DIR)/summarize.py $(RESULTS_DIR)/*.csv --output-dir $(RESULTS_DIR)
+	$(MAMBA) run -n $(ENV_NAME) python $(SUMMARIZE_SCRIPT) $(DATA_DIR)/*.csv
 
-# Generate plots for all runs
+# Generate plots (auto-detects most recent CSV)
 .PHONY: plots
 plots:
-	@echo "Generating CDF plots for all runs..."
+	@echo "Generating plots for most recent benchmark..."
 	@mkdir -p $(PLOTS_DIR)
-	@for csv in $(RESULTS_DIR)/*.csv; do \
-		if [ -f "$$csv" ] && [ "$$(basename $$csv)" != "summary.csv" ]; then \
-			echo "  Plotting $$csv..."; \
-			$(MAMBA) run -n $(ENV_NAME) python $(BENCH_DIR)/plot.py "$$csv" --output-dir $(PLOTS_DIR); \
-		fi; \
-	done
-	@echo "✓ All plots generated in $(PLOTS_DIR)"
+	$(MAMBA) run -n $(ENV_NAME) python $(PLOT_SCRIPT)
 
 # Run complete workflow: bench + summarize + plots
 .PHONY: all
@@ -152,6 +150,7 @@ all: bench summarize plots
 clean:
 	@echo "Cleaning results directory..."
 	rm -rf $(RESULTS_DIR)/*
+	rm -rf $(DATA_DIR)/*.csv
 	@echo "✓ Results cleaned"
 
 # Clean everything including mamba environment
