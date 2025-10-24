@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  vllm-server:
+    image: vllm/vllm-openai:latest
+    runtime: nvidia
+    ports:
+      - "8000:8000"
+    shm_size: 2gb
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+      - MODEL=${MODEL:-gpt-oss-20}
+      - MAX_MODEL_LEN=${MAX_MODEL_LEN:-}
+      - GPU_MEM_UTIL=${GPU_MEM_UTIL:-}
+      - KV_CACHE_DTYPE=${KV_CACHE_DTYPE:-}
+    command: >
+      --model ${MODEL:-gpt-oss-20}
+      --host 0.0.0.0
+      --port 8000
+      --trust-remote-code

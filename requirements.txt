@@ -1,0 +1,25 @@
+# HTTP client for async requests
+httpx==0.27.2
+
+# Async runtime
+anyio==4.6.2
+
+# Data validation and settings
+pydantic==2.9.2
+
+# Configuration files
+pyyaml==6.0.2
+
+# Numerical computing and data analysis
+numpy==2.1.2
+pandas==2.2.3
+
+# Visualization
+matplotlib==3.9.2
+
+# Progress bars and terminal output
+tqdm==4.66.5
+rich==13.9.2
+
+# Optional: GPU telemetry (uncomment if needed)
+# nvidia-ml-py3==7.352.0

@@ -1,0 +1,55 @@
+# vLLM Benchmark Scenarios Configuration
+# 
+# This file defines benchmark scenarios for testing vLLM inference performance
+# across different workload patterns (short chat, RAG, long context, etc.)
+
+# Global defaults applied to all scenarios
+defaults:
+  base_url: "http://localhost:8000/v1"
+  model: "gpt-oss-20"
+  temperature: 0.0
+  stream: true
+
+# Benchmark scenarios
+# Each scenario tests a different workload pattern with varying:
+# - prefill_tokens: approximate number of input tokens (prompt length)
+# - max_new_tokens: maximum number of tokens to generate
+# - concurrencies: list of concurrent request levels to test
+# - num_requests: minimum total requests to send per concurrency level
+
+scenarios:
+  # Short conversational queries with quick responses
+  # Typical use case: chatbot, quick Q&A
+  short_chat:
+    description: "Short chat messages with brief responses"
+    prefill_tokens: 256
+    max_new_tokens: 128
+    concurrencies: [8, 16, 32, 64]
+    num_requests: 500
+
+  # Medium RAG workload with context retrieval
+  # Typical use case: RAG with 3-5 retrieved documents
+  rag_medium:
+    description: "RAG with medium context (3-5 documents)"
+    prefill_tokens: 1536
+    max_new_tokens: 256
+    concurrencies: [8, 16, 32, 64, 96]
+    num_requests: 600
+
+  # Heavy RAG workload with extensive context
+  # Typical use case: RAG with 10+ retrieved documents, detailed synthesis
+  rag_heavy:
+    description: "RAG with heavy context (10+ documents) and longer generation"
+    prefill_tokens: 3072
+    max_new_tokens: 512
+    concurrencies: [8, 16, 32, 64, 96]
+    num_requests: 600
+
+  # Long context with minimal generation
+  # Typical use case: summarization, classification on long documents
+  long_context_small_decode:
+    description: "Long context input with minimal output generation"
+    prefill_tokens: 4096
+    max_new_tokens: 64
+    concurrencies: [8, 16, 32, 64, 96, 128]
+    num_requests: 800
