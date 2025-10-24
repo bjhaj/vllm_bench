@@ -32,9 +32,9 @@ scenarios:
   rag_realistic:
     description: "Realistic RAG: Wikipedia context + Dolly questions + conversation history"
     rag: true
-    prompt_file: "../data/rag_prompts_500.jsonl"
-    prefill_tokens: 1700  # Target prefill (required for validation)
-    target_prefill_tokens: 1700  # 1.5k-1.9k range
+    prompt_file: "../data/rag_prompts_1500.jsonl"
+    prefill_tokens: 1500  # Target prefill (required for validation)
+    target_prefill_tokens: 1500  # 1.2k-1.6k range
     history_turns: 2
     dolly_questions: true
     max_new_tokens: 256
@@ -42,6 +42,7 @@ scenarios:
     num_requests: 10  # Minimum requests (will scale with concurrency if requests_per_user is set)
     requests_per_user: 10  # Each user sends 10 requests
     # Total requests: 4×10=40, 8×10=80, 16×10=160, 32×10=320
+    # Uses unique prompts per concurrency level (no reuse across runs)
 
   # Heavy RAG with more context and history
   # Heavy RAG workload for stress testing

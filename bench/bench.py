@@ -12,6 +12,7 @@ import csv
 import sys
 import time
 import random
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -19,9 +20,13 @@ from dataclasses import dataclass, asdict
 
 import httpx
 import yaml
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
 from tqdm import tqdm
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 console = Console()
@@ -514,7 +519,8 @@ async def run_scenario_benchmark(
     
     # Extract configuration
     base_url = defaults.get('base_url', 'http://localhost:8000/v1')
-    model = defaults.get('model', 'gpt-oss-20')
+    # Load model from environment variable, fallback to scenarios.yaml, then default
+    model = os.getenv('MODEL', defaults.get('model', 'facebook/opt-1.3b'))
     temperature = defaults.get('temperature', 0.0)
     stream = defaults.get('stream', True)
     
@@ -543,6 +549,49 @@ async def run_scenario_benchmark(
     # Determine if this is a RAG scenario with JSONL prompts
     use_rag = scenario_config.get("rag", False)
     
+    # Load ALL available prompts once (outside the concurrency loop)
+    all_messages = []
+    all_token_stats = []
+    
+    if use_rag:
+        from load_jsonl_prompts import load_prompts_from_jsonl
+        from pathlib import Path
+        
+        prompt_file = Path(__file__).parent / scenario_config.get("prompt_file", "../data/rag_prompts.jsonl")
+        
+        if not prompt_file.exists():
+            console.print(f"[red]Error: Prompt file not found: {prompt_file}[/red]")
+            console.print(f"[yellow]Generate it with: python bench/generate_rag_prompts.py -n 1500 -t {scenario_config.get('target_prefill_tokens', 1700)}[/yellow]")
+            return
+        
+        # Load ALL prompts from file
+        all_messages, all_token_stats = load_prompts_from_jsonl(
+            prompt_file,
+            num_prompts=None  # Load all available
+        )
+        
+        console.print(f"[cyan]📚 Loaded {len(all_messages)} total unique prompts from {prompt_file.name}[/cyan]")
+    else:
+        # Legacy: load from Dolly dataset
+        from load_real_prompts import load_real_prompts
+        
+        console.print(f"[cyan]📚 Loading prompts from Dolly dataset...[/cyan]")
+        
+        # Load maximum possible prompts
+        all_messages = load_real_prompts(
+            num_prompts=10000,  # Try to load many
+            dataset_name="dolly",
+            min_tokens=50,
+            max_tokens=max(500, prefill_tokens * 2),
+            seed=42
+        )
+        all_token_stats = None
+        
+        console.print(f"[cyan]📚 Loaded {len(all_messages)} total unique prompts from Dolly dataset[/cyan]")
+    
+    # Track which prompts have been used across concurrency levels
+    used_prompt_indices = set()
+    
     # Run benchmarks for each concurrency level
     async with AsyncLoadGenerator(base_url, model, temperature) as generator:
         for concurrency in concurrencies:
@@ -556,48 +605,39 @@ async def run_scenario_benchmark(
                 actual_num_requests = num_requests
                 console.print(f"\n[yellow]Fixed workload: {actual_num_requests} total requests[/yellow]")
             
-            # Load prompts
-            console.print(f"[cyan]Loading {actual_num_requests} prompts...[/cyan]")
+            # Check if we have enough unique prompts
+            available_prompts = len(all_messages) - len(used_prompt_indices)
+            if available_prompts < actual_num_requests:
+                console.print(f"[red]❌ Error: Not enough unique prompts![/red]")
+                console.print(f"[red]   Need: {actual_num_requests} prompts[/red]")
+                console.print(f"[red]   Available: {available_prompts} unused prompts (total: {len(all_messages)})[/red]")
+                console.print(f"[yellow]💡 Generate more prompts with:[/yellow]")
+                console.print(f"[yellow]   python bench/generate_rag_prompts.py -n {len(all_messages) * 2} -t {scenario_config.get('target_prefill_tokens', 1700)}[/yellow]")
+                return
             
-            if use_rag:
-                # Load from JSONL file
-                from load_jsonl_prompts import load_prompts_from_jsonl_repeated
-                from pathlib import Path
-                
-                prompt_file = Path(__file__).parent / scenario_config.get("prompt_file", "../data/rag_prompts.jsonl")
-                console.print(f"[cyan]  Loading RAG prompts from: {prompt_file}[/cyan]")
-                
-                if not prompt_file.exists():
-                    console.print(f"[red]Error: Prompt file not found: {prompt_file}[/red]")
-                    console.print(f"[yellow]Generate it with: python bench/generate_rag_prompts.py -n 500 -t {scenario_config.get('target_prefill_tokens', 1700)}[/yellow]")
-                    return
-                
-                messages_batch, token_stats_batch = load_prompts_from_jsonl_repeated(
-                    prompt_file,
-                    num_prompts=actual_num_requests,
-                    seed=hash(scenario_name) % 10000
-                )
-                
-                # Log token statistics
-                avg_tokens = sum(s["total_prefill_tokens"] for s in token_stats_batch) / len(token_stats_batch)
-                console.print(f"[green]  ✓ Loaded {len(messages_batch)} prompts (avg {avg_tokens:.1f} tokens)[/green]")
+            # Select NEW unused prompts
+            available_indices = [i for i in range(len(all_messages)) if i not in used_prompt_indices]
+            
+            # Randomly sample from available indices
+            selected_indices = random.sample(available_indices, actual_num_requests)
+            
+            # Extract selected prompts
+            messages_batch = [all_messages[i] for i in selected_indices]
+            if all_token_stats:
+                token_stats_batch = [all_token_stats[i] for i in selected_indices]
             else:
-                # Legacy: load from Dolly dataset
-                from load_real_prompts import load_real_prompts
-                console.print(f"[cyan]  Using Dolly dataset (human-generated instructions)[/cyan]")
-                
-                messages_batch = load_real_prompts(
-                    num_prompts=actual_num_requests,
-                    dataset_name="dolly",
-                    min_tokens=50,
-                    max_tokens=max(500, prefill_tokens * 2),
-                    seed=hash(scenario_name) % 10000
-                )
-                token_stats_batch = None  # No detailed stats for legacy prompts
-                
-                if len(messages_batch) < actual_num_requests:
-                    console.print(f"[red]Error: Only found {len(messages_batch)} prompts, need {actual_num_requests}[/red]")
-                    return
+                token_stats_batch = None
+            
+            # Mark these prompts as used
+            used_prompt_indices.update(selected_indices)
+            
+            console.print(f"[green]✅ Selected {len(messages_batch)} NEW unique prompts[/green]")
+            console.print(f"[green]   Total used: {len(used_prompt_indices)}/{len(all_messages)} ({len(used_prompt_indices)/len(all_messages)*100:.1f}%)[/green]")
+            
+            if token_stats_batch:
+                avg_tokens = sum(s["total_prefill_tokens"] for s in token_stats_batch) / len(token_stats_batch)
+                console.print(f"[green]   Average tokens: {avg_tokens:.1f}[/green]")
+            
             console.print(f"\n[bold yellow]Running with concurrency: {concurrency}[/bold yellow]")
             
             # Generate structured run ID
@@ -787,7 +827,8 @@ Examples:
         console.print(f"[cyan]Running all scenarios: {', '.join(scenarios.keys())}[/cyan]")
     
     console.print(f"[bold green]Starting vLLM Benchmark[/bold green]")
-    console.print(f"Model: {defaults.get('model', 'gpt-oss-20')}")
+    model = os.getenv('MODEL', defaults.get('model', 'facebook/opt-1.3b'))
+    console.print(f"Model: {model}")
     console.print(f"Base URL: {defaults.get('base_url', 'http://localhost:8000/v1')}")
     console.print(f"Output directory: {output_dir.absolute()}")
     console.print(f"Output pattern: {args.output_pattern}")
