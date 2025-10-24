@@ -6,7 +6,7 @@
 # Global defaults applied to all scenarios
 defaults:
   base_url: "http://localhost:8000/v1"
-  model: "gpt-oss-20"
+  model: "facebook/opt-1.3b"
   temperature: 0.0
   stream: true
 
